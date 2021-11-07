@@ -1,0 +1,263 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title></title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body>
+
+
+
+<h1 id="NAME">NAME</h1>
+
+<p>PostgreSQL::Test::Utils - helper module for writing PostgreSQL&#39;s <code>prove</code> tests.</p>
+
+<h1 id="SYNOPSIS">SYNOPSIS</h1>
+
+<pre><code>  use PostgreSQL::Test::Utils;
+
+  # Test basic output of a command
+  program_help_ok(&#39;initdb&#39;);
+  program_version_ok(&#39;initdb&#39;);
+  program_options_handling_ok(&#39;initdb&#39;);
+
+  # Test option combinations
+  command_fails([&#39;initdb&#39;, &#39;--invalid-option&#39;],
+              &#39;command fails with invalid option&#39;);
+  my $tempdir = PostgreSQL::Test::Utils::tempdir;
+  command_ok(&#39;initdb&#39;, &#39;-D&#39;, $tempdir);
+
+  # Miscellanea
+  print &quot;on Windows&quot; if $PostgreSQL::Test::Utils::windows_os;
+  my $path = PostgreSQL::Test::Utils::perl2host($backup_dir);
+  ok(check_mode_recursive($stream_dir, 0700, 0600),
+    &quot;check stream dir permissions&quot;);
+  PostgreSQL::Test::Utils::system_log(&#39;pg_ctl&#39;, &#39;kill&#39;, &#39;QUIT&#39;, $slow_pid);</code></pre>
+
+<h1 id="DESCRIPTION">DESCRIPTION</h1>
+
+<p><code>PostgreSQL::Test::Utils</code> contains a set of routines dedicated to environment setup for a PostgreSQL regression test run and includes some low-level routines aimed at controlling command execution, logging and test functions.</p>
+
+<h1 id="EXPORTED-VARIABLES">EXPORTED VARIABLES</h1>
+
+<dl>
+
+<dt id="windows_os"><code>$windows_os</code></dt>
+<dd>
+
+<p>Set to true when running under Windows, except on Cygwin.</p>
+
+</dd>
+<dt id="is_msys2"><code>$is_msys2</code></dt>
+<dd>
+
+<p>Set to true when running under MSYS2.</p>
+
+</dd>
+</dl>
+
+<h1 id="ROUTINES">ROUTINES</h1>
+
+<dl>
+
+<dt id="all_tests_passing">all_tests_passing()</dt>
+<dd>
+
+<p>Return 1 if all the tests run so far have passed. Otherwise, return 0.</p>
+
+</dd>
+<dt id="tempdir-prefix">tempdir(prefix)</dt>
+<dd>
+
+<p>Securely create a temporary directory inside <code>$tmp_check</code>, like <code>mkdtemp</code>, and return its name. The directory will be removed automatically at the end of the tests.</p>
+
+<p>If <code>prefix</code> is given, the new directory is templated as <code>${prefix}_XXXX</code>. Otherwise the template is <code>tmp_test_XXXX</code>.</p>
+
+</dd>
+<dt id="tempdir_short">tempdir_short()</dt>
+<dd>
+
+<p>As above, but the directory is outside the build tree so that it has a short name, to avoid path length issues.</p>
+
+</dd>
+<dt id="perl2host">perl2host()</dt>
+<dd>
+
+<p>Translate a virtual file name to a host file name. Currently, this is a no-op except for the case of Perl=msys and host=mingw32. The subject need not exist, but its parent or grandparent directory must exist unless cygpath is available.</p>
+
+<p>The returned path uses forward slashes but has no trailing slash.</p>
+
+</dd>
+<dt id="system_log-cmd">system_log(@cmd)</dt>
+<dd>
+
+<p>Run (via <code>system()</code>) the command passed as argument; the return value is passed through.</p>
+
+</dd>
+<dt id="system_or_bail-cmd">system_or_bail(@cmd)</dt>
+<dd>
+
+<p>Run (via <code>system()</code>) the command passed as argument, and returns if the command is successful. On failure, abandon further tests and exit the program.</p>
+
+</dd>
+<dt id="run_log-cmd">run_log(@cmd)</dt>
+<dd>
+
+<p>Run the given command via <code>IPC::Run::run()</code>, noting it in the log. The return value from the command is passed through.</p>
+
+</dd>
+<dt id="run_command-cmd">run_command(cmd)</dt>
+<dd>
+
+<p>Run (via <code>IPC::Run::run()</code>) the command passed as argument. The return value from the command is ignored. The return value is <code>($stdout, $stderr)</code>.</p>
+
+</dd>
+<dt id="generate_ascii_string-from_char-to_char">generate_ascii_string(from_char, to_char)</dt>
+<dd>
+
+<p>Generate a string made of the given range of ASCII characters.</p>
+
+</dd>
+<dt id="slurp_dir-dir">slurp_dir(dir)</dt>
+<dd>
+
+<p>Return the complete list of entries in the specified directory.</p>
+
+</dd>
+<dt id="slurp_file-filename-offset">slurp_file(filename [, $offset])</dt>
+<dd>
+
+<p>Return the full contents of the specified file, beginning from an offset position if specified.</p>
+
+</dd>
+<dt id="append_to_file-filename-str">append_to_file(filename, str)</dt>
+<dd>
+
+<p>Append a string at the end of a given file. (Note: no newline is appended at end of file.)</p>
+
+</dd>
+<dt id="check_mode_recursive-dir-expected_dir_mode-expected_file_mode-ignore_list">check_mode_recursive(dir, expected_dir_mode, expected_file_mode, ignore_list)</dt>
+<dd>
+
+<p>Check that all file/dir modes in a directory match the expected values, ignoring files in <code>ignore_list</code> (basename only).</p>
+
+</dd>
+<dt id="chmod_recursive-dir-dir_mode-file_mode">chmod_recursive(dir, dir_mode, file_mode)</dt>
+<dd>
+
+<p><code>chmod</code> recursively each file and directory within the given directory.</p>
+
+</dd>
+<dt id="check_pg_config-regexp">check_pg_config(regexp)</dt>
+<dd>
+
+<p>Return the number of matches of the given regular expression within the installation&#39;s <code>pg_config.h</code>.</p>
+
+</dd>
+<dt id="dir_symlink-oldname-newname">dir_symlink(oldname, newname)</dt>
+<dd>
+
+<p>Portably create a symlink for a directory. On Windows this creates a junction point. Elsewhere it just calls perl&#39;s builtin symlink.</p>
+
+</dd>
+</dl>
+
+<h1 id="Test::More-LIKE-METHODS">Test::More-LIKE METHODS</h1>
+
+<dl>
+
+<dt id="command_ok-cmd-test_name">command_ok(cmd, test_name)</dt>
+<dd>
+
+<p>Check that the command runs (via <code>run_log</code>) successfully.</p>
+
+</dd>
+<dt id="command_fails-cmd-test_name">command_fails(cmd, test_name)</dt>
+<dd>
+
+<p>Check that the command fails (when run via <code>run_log</code>).</p>
+
+</dd>
+<dt id="command_exit_is-cmd-expected-test_name">command_exit_is(cmd, expected, test_name)</dt>
+<dd>
+
+<p>Check that the command exit code matches the expected exit code.</p>
+
+</dd>
+<dt id="program_help_ok-cmd">program_help_ok(cmd)</dt>
+<dd>
+
+<p>Check that the command supports the <code>--help</code> option.</p>
+
+</dd>
+<dt id="program_version_ok-cmd">program_version_ok(cmd)</dt>
+<dd>
+
+<p>Check that the command supports the <code>--version</code> option.</p>
+
+</dd>
+<dt id="program_options_handling_ok-cmd">program_options_handling_ok(cmd)</dt>
+<dd>
+
+<p>Check that a command with an invalid option returns a non-zero exit code and error message.</p>
+
+</dd>
+<dt id="command_like-cmd-expected_stdout-test_name">command_like(cmd, expected_stdout, test_name)</dt>
+<dd>
+
+<p>Check that the command runs successfully and the output matches the given regular expression.</p>
+
+</dd>
+<dt id="command_like_safe-cmd-expected_stdout-test_name">command_like_safe(cmd, expected_stdout, test_name)</dt>
+<dd>
+
+<p>Check that the command runs successfully and the output matches the given regular expression. Doesn&#39;t assume that the output files are closed.</p>
+
+</dd>
+<dt id="command_fails_like-cmd-expected_stderr-test_name">command_fails_like(cmd, expected_stderr, test_name)</dt>
+<dd>
+
+<p>Check that the command fails and the error message matches the given regular expression.</p>
+
+</dd>
+<dt id="command_checks_all-cmd-ret-out-err-test_name">command_checks_all(cmd, ret, out, err, test_name)</dt>
+<dd>
+
+<p>Run a command and check its status and outputs. Arguments:</p>
+
+<dl>
+
+<dt id="cmd:-Array-reference-of-command-and-arguments-to-run"><code>cmd</code>: Array reference of command and arguments to run</dt>
+<dd>
+
+</dd>
+<dt id="ret:-Expected-exit-code"><code>ret</code>: Expected exit code</dt>
+<dd>
+
+</dd>
+<dt id="out:-Expected-stdout-from-command"><code>out</code>: Expected stdout from command</dt>
+<dd>
+
+</dd>
+<dt id="err:-Expected-stderr-from-command"><code>err</code>: Expected stderr from command</dt>
+<dd>
+
+</dd>
+<dt id="test_name:-test-name"><code>test_name</code>: test name</dt>
+<dd>
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+
+</body>
+
+</html>
+
+

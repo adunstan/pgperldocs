@@ -1,0 +1,789 @@
+<?xml version="1.0" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>PostgreSQL::Test::Cluster - class representing PostgreSQL server instance</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rev="made" href="mailto:root@localhost" />
+</head>
+
+<body>
+
+
+
+<h1 id="NAME">NAME</h1>
+
+<p>PostgreSQL::Test::Cluster - class representing PostgreSQL server instance</p>
+
+<h1 id="SYNOPSIS">SYNOPSIS</h1>
+
+<pre><code>  use PostgreSQL::Test::Cluster;
+
+  my $node = PostgreSQL::Test::Cluster-&gt;new(&#39;mynode&#39;);
+
+  # Create a data directory with initdb
+  $node-&gt;init();
+
+  # Start the PostgreSQL server
+  $node-&gt;start();
+
+  # Add a setting and restart
+  $node-&gt;append_conf(&#39;postgresql.conf&#39;, &#39;hot_standby = on&#39;);
+  $node-&gt;restart();
+
+  # Modify or delete an existing setting
+  $node-&gt;adjust_conf(&#39;postgresql.conf&#39;, &#39;max_wal_senders&#39;, &#39;10&#39;);
+
+  # run a query with psql, like:
+  #   echo &#39;SELECT 1&#39; | psql -qAXt postgres -v ON_ERROR_STOP=1
+  $psql_stdout = $node-&gt;safe_psql(&#39;postgres&#39;, &#39;SELECT 1&#39;);
+
+  # Run psql with a timeout, capturing stdout and stderr
+  # as well as the psql exit code. Pass some extra psql
+  # options. If there&#39;s an error from psql raise an exception.
+  my ($stdout, $stderr, $timed_out);
+  my $cmdret = $node-&gt;psql(&#39;postgres&#39;, &#39;SELECT pg_sleep(600)&#39;,
+          stdout =&gt; \$stdout, stderr =&gt; \$stderr,
+          timeout =&gt; 180, timed_out =&gt; \$timed_out,
+          extra_params =&gt; [&#39;--single-transaction&#39;],
+          on_error_die =&gt; 1)
+  print &quot;Sleep timed out&quot; if $timed_out;
+
+  # Similar thing, more convenient in common cases
+  my ($cmdret, $stdout, $stderr) =
+      $node-&gt;psql(&#39;postgres&#39;, &#39;SELECT 1&#39;);
+
+  # run query every second until it returns &#39;t&#39;
+  # or times out
+  $node-&gt;poll_query_until(&#39;postgres&#39;, q|SELECT random() &lt; 0.1;|&#39;)
+    or die &quot;timed out&quot;;
+
+  # Do an online pg_basebackup
+  my $ret = $node-&gt;backup(&#39;testbackup1&#39;);
+
+  # Take a backup of a running server
+  my $ret = $node-&gt;backup_fs_hot(&#39;testbackup2&#39;);
+
+  # Take a backup of a stopped server
+  $node-&gt;stop;
+  my $ret = $node-&gt;backup_fs_cold(&#39;testbackup3&#39;)
+
+  # Restore it to create a new independent node (not a replica)
+  my $other_node = PostgreSQL::Test::Cluster-&gt;new(&#39;mycopy&#39;);
+  $other_node-&gt;init_from_backup($node, &#39;testbackup&#39;);
+  $other_node-&gt;start;
+
+  # Stop the server
+  $node-&gt;stop(&#39;fast&#39;);
+
+  # Find a free, unprivileged TCP port to bind some other service to
+  my $port = PostgreSQL::Test::Cluster::get_free_port();</code></pre>
+
+<h1 id="DESCRIPTION">DESCRIPTION</h1>
+
+<p>PostgreSQL::Test::Cluster contains a set of routines able to work on a PostgreSQL node, allowing to start, stop, backup and initialize it with various options. The set of nodes managed by a given test is also managed by this module.</p>
+
+<p>In addition to node management, PostgreSQL::Test::Cluster instances have some wrappers around Test::More functions to run commands with an environment set up to point to the instance.</p>
+
+<p>The IPC::Run module is required.</p>
+
+<h1 id="METHODS">METHODS</h1>
+
+<dl>
+
+<dt id="node-port">$node-&gt;port()</dt>
+<dd>
+
+<p>Get the port number assigned to the host. This won&#39;t necessarily be a TCP port open on the local host since we prefer to use unix sockets if possible.</p>
+
+<p>Use $node-&gt;connstr() if you want a connection string.</p>
+
+</dd>
+<dt id="node-host">$node-&gt;host()</dt>
+<dd>
+
+<p>Return the host (like PGHOST) for this instance. May be a UNIX socket path.</p>
+
+<p>Use $node-&gt;connstr() if you want a connection string.</p>
+
+</dd>
+<dt id="node-basedir">$node-&gt;basedir()</dt>
+<dd>
+
+<p>The directory all the node&#39;s files will be within - datadir, archive directory, backups, etc.</p>
+
+</dd>
+<dt id="node-name">$node-&gt;name()</dt>
+<dd>
+
+<p>The name assigned to the node at creation time.</p>
+
+</dd>
+<dt id="node-logfile">$node-&gt;logfile()</dt>
+<dd>
+
+<p>Path to the PostgreSQL log file for this instance.</p>
+
+</dd>
+<dt id="node-connstr">$node-&gt;connstr()</dt>
+<dd>
+
+<p>Get a libpq connection string that will establish a connection to this node. Suitable for passing to psql, DBD::Pg, etc.</p>
+
+</dd>
+<dt id="node-group_access">$node-&gt;group_access()</dt>
+<dd>
+
+<p>Does the data dir allow group access?</p>
+
+</dd>
+<dt id="node-data_dir">$node-&gt;data_dir()</dt>
+<dd>
+
+<p>Returns the path to the data directory. postgresql.conf and pg_hba.conf are always here.</p>
+
+</dd>
+<dt id="node-archive_dir">$node-&gt;archive_dir()</dt>
+<dd>
+
+<p>If archiving is enabled, WAL files go here.</p>
+
+</dd>
+<dt id="node-backup_dir">$node-&gt;backup_dir()</dt>
+<dd>
+
+<p>The output path for backups taken with $node-&gt;backup()</p>
+
+</dd>
+<dt id="node-install_path">$node-&gt;install_path()</dt>
+<dd>
+
+<p>The configured install path (if any) for the node.</p>
+
+</dd>
+<dt id="node-info">$node-&gt;info()</dt>
+<dd>
+
+<p>Return a string containing human-readable diagnostic information (paths, etc) about this node.</p>
+
+</dd>
+<dt id="node-dump_info">$node-&gt;dump_info()</dt>
+<dd>
+
+<p>Print $node-&gt;info()</p>
+
+</dd>
+<dt id="node-init">$node-&gt;init(...)</dt>
+<dd>
+
+<p>Initialize a new cluster for testing.</p>
+
+<p>Authentication is set up so that only the current OS user can access the cluster. On Unix, we use Unix domain socket connections, with the socket in a directory that&#39;s only accessible to the current user to ensure that. On Windows, we use SSPI authentication to ensure the same (by pg_regress --config-auth).</p>
+
+<p>WAL archiving can be enabled on this node by passing the keyword parameter has_archiving =&gt; 1. This is disabled by default.</p>
+
+<p>postgresql.conf can be set up for replication by passing the keyword parameter allows_streaming =&gt; &#39;logical&#39; or &#39;physical&#39; (passing 1 will also suffice for physical replication) depending on type of replication that should be enabled. This is disabled by default.</p>
+
+<p>The new node is set up in a fast but unsafe configuration where fsync is disabled.</p>
+
+</dd>
+<dt id="node-append_conf-filename-str">$node-&gt;append_conf(filename, str)</dt>
+<dd>
+
+<p>A shortcut method to append to files like pg_hba.conf and postgresql.conf.</p>
+
+<p>Does no validation or sanity checking. Does not reload the configuration after writing.</p>
+
+<p>A newline is automatically appended to the string.</p>
+
+</dd>
+<dt id="node-adjust_conf-filename-setting-value-skip_equals">$node-&gt;adjust_conf(filename, setting, value, skip_equals)</dt>
+<dd>
+
+<p>Modify the named config file setting with the value. If the value is undefined, instead delete the setting. If the setting is not present no action is taken.</p>
+
+<p>This will write &quot;$setting = $value\n&quot; in place of the existing line, unless skip_equals is true, in which case it will write &quot;$setting $value\n&quot;. If the value needs to be quoted it is the caller&#39;s responsibility to do that.</p>
+
+</dd>
+<dt id="node-backup-backup_name">$node-&gt;backup(backup_name)</dt>
+<dd>
+
+<p>Create a hot backup with <b>pg_basebackup</b> in subdirectory <b>backup_name</b> of <b>$node-&gt;backup_dir</b>, including the WAL.</p>
+
+<p>By default, WAL files are fetched at the end of the backup, not streamed. You can adjust that and other things by passing an array of additional <b>pg_basebackup</b> command line options in the keyword parameter backup_options.</p>
+
+<p>You&#39;ll have to configure a suitable <b>max_wal_senders</b> on the target server since it isn&#39;t done by default.</p>
+
+</dd>
+<dt id="node-backup_fs_hot-backup_name">$node-&gt;backup_fs_hot(backup_name)</dt>
+<dd>
+
+<p>Create a backup with a filesystem level copy in subdirectory <b>backup_name</b> of <b>$node-&gt;backup_dir</b>, including WAL.</p>
+
+<p>Archiving must be enabled, as <b>pg_start_backup()</b> and <b>pg_stop_backup()</b> are used. This is not checked or enforced.</p>
+
+<p>The backup name is passed as the backup label to <b>pg_start_backup()</b>.</p>
+
+</dd>
+<dt id="node-backup_fs_cold-backup_name">$node-&gt;backup_fs_cold(backup_name)</dt>
+<dd>
+
+<p>Create a backup with a filesystem level copy in subdirectory <b>backup_name</b> of <b>$node-&gt;backup_dir</b>, including WAL. The server must be stopped as no attempt to handle concurrent writes is made.</p>
+
+<p>Use <b>backup</b> or <b>backup_fs_hot</b> if you want to back up a running server.</p>
+
+</dd>
+<dt id="node-init_from_backup-root_node-backup_name">$node-&gt;init_from_backup(root_node, backup_name)</dt>
+<dd>
+
+<p>Initialize a node from a backup, which may come from this node or a different node. root_node must be a PostgreSQL::Test::Cluster reference, backup_name the string name of a backup previously created on that node with $node-&gt;backup.</p>
+
+<p>Does not start the node after initializing it.</p>
+
+<p>By default, the backup is assumed to be plain format. To restore from a tar-format backup, pass the name of the tar program to use in the keyword parameter tar_program. Note that tablespace tar files aren&#39;t handled here.</p>
+
+<p>Streaming replication can be enabled on this node by passing the keyword parameter has_streaming =&gt; 1. This is disabled by default.</p>
+
+<p>Restoring WAL segments from archives using restore_command can be enabled by passing the keyword parameter has_restoring =&gt; 1. This is disabled by default.</p>
+
+<p>If has_restoring is used, standby mode is used by default. To use recovery mode instead, pass the keyword parameter standby =&gt; 0.</p>
+
+<p>The backup is copied, leaving the original unmodified. pg_hba.conf is unconditionally set to enable replication connections.</p>
+
+</dd>
+<dt id="node-rotate_logfile">$node-&gt;rotate_logfile()</dt>
+<dd>
+
+<p>Switch to a new PostgreSQL log file. This does not alter any running PostgreSQL process. Subsequent method calls, including pg_ctl invocations, will use the new name. Return the new name.</p>
+
+</dd>
+<dt id="node-start-params-success_or_failure">$node-&gt;start(%params) =&gt; success_or_failure</dt>
+<dd>
+
+<p>Wrapper for pg_ctl start</p>
+
+<p>Start the node and wait until it is ready to accept connections.</p>
+
+<dl>
+
+<dt id="fail_ok-1">fail_ok =&gt; 1</dt>
+<dd>
+
+<p>By default, failure terminates the entire <i>prove</i> invocation. If given, instead return a true or false value to indicate success or failure.</p>
+
+</dd>
+</dl>
+
+</dd>
+<dt id="node-kill9">$node-&gt;kill9()</dt>
+<dd>
+
+<p>Send SIGKILL (signal 9) to the postmaster.</p>
+
+<p>Note: if the node is already known stopped, this does nothing. However, if we think it&#39;s running and it&#39;s not, it&#39;s important for this to fail. Otherwise, tests might fail to detect server crashes.</p>
+
+</dd>
+<dt id="node-stop-mode">$node-&gt;stop(mode)</dt>
+<dd>
+
+<p>Stop the node using pg_ctl -m $mode and wait for it to stop.</p>
+
+<p>Note: if the node is already known stopped, this does nothing. However, if we think it&#39;s running and it&#39;s not, it&#39;s important for this to fail. Otherwise, tests might fail to detect server crashes.</p>
+
+</dd>
+<dt id="node-reload">$node-&gt;reload()</dt>
+<dd>
+
+<p>Reload configuration parameters on the node.</p>
+
+</dd>
+<dt id="node-restart">$node-&gt;restart()</dt>
+<dd>
+
+<p>Wrapper for pg_ctl restart</p>
+
+</dd>
+<dt id="node-promote">$node-&gt;promote()</dt>
+<dd>
+
+<p>Wrapper for pg_ctl promote</p>
+
+</dd>
+<dt id="node-logrotate">$node-&gt;logrotate()</dt>
+<dd>
+
+<p>Wrapper for pg_ctl logrotate</p>
+
+</dd>
+<dt id="node-set_recovery_mode">$node-&gt;set_recovery_mode()</dt>
+<dd>
+
+<p>Place recovery.signal file.</p>
+
+</dd>
+<dt id="node-set_standby_mode">$node-&gt;set_standby_mode()</dt>
+<dd>
+
+<p>Place standby.signal file.</p>
+
+</dd>
+<dt id="PostgreSQL::Test::Cluster-new-node_name-params">PostgreSQL::Test::Cluster-&gt;new(node_name, %params)</dt>
+<dd>
+
+<p>Build a new object of class <code>PostgreSQL::Test::Cluster</code> (or of a subclass, if you have one), assigning a free port number. Remembers the node, to prevent its port number from being reused for another node, and to ensure that it gets shut down when the test script exits.</p>
+
+<dl>
+
+<dt id="port-1-65535">port =&gt; [1,65535]</dt>
+<dd>
+
+<p>By default, this function assigns a port number to each node. Specify this to force a particular port number. The caller is responsible for evaluating potential conflicts and privilege requirements.</p>
+
+</dd>
+<dt id="own_host-1">own_host =&gt; 1</dt>
+<dd>
+
+<p>By default, all nodes use the same PGHOST value. If specified, generate a PGHOST specific to this node. This allows multiple nodes to use the same port.</p>
+
+</dd>
+<dt id="install_path-path-to-postgres-installation">install_path =&gt; &#39;/path/to/postgres/installation&#39;</dt>
+<dd>
+
+<p>Using this parameter is it possible to have nodes pointing to different installations, for testing different versions together or the same version with different build parameters. The provided path must be the parent of the installation&#39;s &#39;bin&#39; and &#39;lib&#39; directories. In the common case where this is not provided, Postgres binaries will be found in the caller&#39;s PATH.</p>
+
+</dd>
+</dl>
+
+</dd>
+<dt id="get_free_port">get_free_port()</dt>
+<dd>
+
+<p>Locate an unprivileged (high) TCP port that&#39;s not currently bound to anything. This is used by <code>new()</code>, and also by some test cases that need to start other, non-Postgres servers.</p>
+
+<p>Ports assigned to existing PostgreSQL::Test::Cluster objects are automatically excluded, even if those servers are not currently running.</p>
+
+<p>XXX A port available now may become unavailable by the time we start the desired service.</p>
+
+<p>Note: this is not an instance method. As it&#39;s not exported it should be called from outside the module as <code>PostgreSQL::Test::Cluster::get_free_port()</code>.</p>
+
+</dd>
+<dt id="node-teardown_node">$node-&gt;teardown_node()</dt>
+<dd>
+
+<p>Do an immediate stop of the node</p>
+
+</dd>
+<dt id="node-clean_node">$node-&gt;clean_node()</dt>
+<dd>
+
+<p>Remove the base directory of the node if the node has been stopped.</p>
+
+</dd>
+<dt id="node-safe_psql-dbname-sql-stdout">$node-&gt;safe_psql($dbname, $sql) =&gt; stdout</dt>
+<dd>
+
+<p>Invoke <b>psql</b> to run <b>sql</b> on <b>dbname</b> and return its stdout on success. Die if the SQL produces an error. Runs with <b>ON_ERROR_STOP</b> set.</p>
+
+<p>Takes optional extra params like timeout and timed_out parameters with the same options as psql.</p>
+
+</dd>
+<dt id="node-psql-dbname-sql-params-psql_retval">$node-&gt;psql($dbname, $sql, %params) =&gt; psql_retval</dt>
+<dd>
+
+<p>Invoke <b>psql</b> to execute <b>$sql</b> on <b>$dbname</b> and return the return value from <b>psql</b>, which is run with on_error_stop by default so that it will stop running sql and return 3 if the passed SQL results in an error.</p>
+
+<p>As a convenience, if <b>psql</b> is called in array context it returns an array containing ($retval, $stdout, $stderr).</p>
+
+<p>psql is invoked in tuples-only unaligned mode with reading of <b>.psqlrc</b> disabled. That may be overridden by passing extra psql parameters.</p>
+
+<p>stdout and stderr are transformed to UNIX line endings if on Windows. Any trailing newline is removed.</p>
+
+<p>Dies on failure to invoke psql but not if psql exits with a nonzero return code (unless on_error_die specified).</p>
+
+<p>If psql exits because of a signal, an exception is raised.</p>
+
+<dl>
+
+<dt id="stdout-stdout">stdout =&gt; \$stdout</dt>
+<dd>
+
+<p><b>stdout</b>, if given, must be a scalar reference to which standard output is written. If not given, standard output is not redirected and will be printed unless <b>psql</b> is called in array context, in which case it&#39;s captured and returned.</p>
+
+</dd>
+<dt id="stderr-stderr">stderr =&gt; \$stderr</dt>
+<dd>
+
+<p>Same as <b>stdout</b> but gets standard error. If the same scalar is passed for both <b>stdout</b> and <b>stderr</b> the results may be interleaved unpredictably.</p>
+
+</dd>
+<dt id="on_error_stop-1">on_error_stop =&gt; 1</dt>
+<dd>
+
+<p>By default, the <b>psql</b> method invokes the <b>psql</b> program with ON_ERROR_STOP=1 set, so SQL execution is stopped at the first error and exit code 3 is returned. Set <b>on_error_stop</b> to 0 to ignore errors instead.</p>
+
+</dd>
+<dt id="on_error_die-0">on_error_die =&gt; 0</dt>
+<dd>
+
+<p>By default, this method returns psql&#39;s result code. Pass on_error_die to instead die with an informative message.</p>
+
+</dd>
+<dt id="timeout-interval">timeout =&gt; &#39;interval&#39;</dt>
+<dd>
+
+<p>Set a timeout for the psql call as an interval accepted by <b>IPC::Run::timer</b> (integer seconds is fine). This method raises an exception on timeout, unless the <b>timed_out</b> parameter is also given.</p>
+
+</dd>
+<dt id="timed_out-timed_out">timed_out =&gt; \$timed_out</dt>
+<dd>
+
+<p>If <b>timeout</b> is set and this parameter is given, the scalar it references is set to true if the psql call times out.</p>
+
+</dd>
+<dt id="connstr-value">connstr =&gt; <b>value</b></dt>
+<dd>
+
+<p>If set, use this as the connection string for the connection to the backend.</p>
+
+</dd>
+<dt id="replication-value">replication =&gt; <b>value</b></dt>
+<dd>
+
+<p>If set, add <b>replication=value</b> to the conninfo string. Passing the literal value <code>database</code> results in a logical replication connection.</p>
+
+</dd>
+<dt id="extra_params---single-transaction">extra_params =&gt; [&#39;--single-transaction&#39;]</dt>
+<dd>
+
+<p>If given, it must be an array reference containing additional parameters to <b>psql</b>.</p>
+
+</dd>
+</dl>
+
+<p>e.g.</p>
+
+<pre><code>        my ($stdout, $stderr, $timed_out);
+        my $cmdret = $node-&gt;psql(&#39;postgres&#39;, &#39;SELECT pg_sleep(600)&#39;,
+                stdout =&gt; \$stdout, stderr =&gt; \$stderr,
+                timeout =&gt; 180, timed_out =&gt; \$timed_out,
+                extra_params =&gt; [&#39;--single-transaction&#39;])</code></pre>
+
+<p>will set $cmdret to undef and $timed_out to a true value.</p>
+
+<pre><code>        $node-&gt;psql(&#39;postgres&#39;, $sql, on_error_die =&gt; 1);</code></pre>
+
+<p>dies with an informative message if $sql fails.</p>
+
+</dd>
+<dt id="node-background_psql-dbname-stdin-stdout-timer-params-harness">$node-&gt;background_psql($dbname, \$stdin, \$stdout, $timer, %params) =&gt; harness</dt>
+<dd>
+
+<p>Invoke <b>psql</b> on <b>$dbname</b> and return an IPC::Run harness object, which the caller may use to send input to <b>psql</b>. The process&#39;s stdin is sourced from the $stdin scalar reference, and its stdout and stderr go to the $stdout scalar reference. This allows the caller to act on other parts of the system while idling this backend.</p>
+
+<p>The specified timer object is attached to the harness, as well. It&#39;s caller&#39;s responsibility to select the timeout length, and to restart the timer after each command if the timeout is per-command.</p>
+
+<p>psql is invoked in tuples-only unaligned mode with reading of <b>.psqlrc</b> disabled. That may be overridden by passing extra psql parameters.</p>
+
+<p>Dies on failure to invoke psql, or if psql fails to connect. Errors occurring later are the caller&#39;s problem. psql runs with on_error_stop by default so that it will stop running sql and return 3 if passed SQL results in an error.</p>
+
+<p>Be sure to &quot;finish&quot; the harness when done with it.</p>
+
+<dl>
+
+<dt id="on_error_stop-11">on_error_stop =&gt; 1</dt>
+<dd>
+
+<p>By default, the <b>psql</b> method invokes the <b>psql</b> program with ON_ERROR_STOP=1 set, so SQL execution is stopped at the first error and exit code 3 is returned. Set <b>on_error_stop</b> to 0 to ignore errors instead.</p>
+
+</dd>
+<dt id="replication-value1">replication =&gt; <b>value</b></dt>
+<dd>
+
+<p>If set, add <b>replication=value</b> to the conninfo string. Passing the literal value <code>database</code> results in a logical replication connection.</p>
+
+</dd>
+<dt id="extra_params---single-transaction1">extra_params =&gt; [&#39;--single-transaction&#39;]</dt>
+<dd>
+
+<p>If given, it must be an array reference containing additional parameters to <b>psql</b>.</p>
+
+</dd>
+</dl>
+
+</dd>
+<dt id="node-interactive_psql-dbname-stdin-stdout-timer-params-harness">$node-&gt;interactive_psql($dbname, \$stdin, \$stdout, $timer, %params) =&gt; harness</dt>
+<dd>
+
+<p>Invoke <b>psql</b> on <b>$dbname</b> and return an IPC::Run harness object, which the caller may use to send interactive input to <b>psql</b>. The process&#39;s stdin is sourced from the $stdin scalar reference, and its stdout and stderr go to the $stdout scalar reference. ptys are used so that psql thinks it&#39;s being called interactively.</p>
+
+<p>The specified timer object is attached to the harness, as well. It&#39;s caller&#39;s responsibility to select the timeout length, and to restart the timer after each command if the timeout is per-command.</p>
+
+<p>psql is invoked in tuples-only unaligned mode with reading of <b>.psqlrc</b> disabled. That may be overridden by passing extra psql parameters.</p>
+
+<p>Dies on failure to invoke psql, or if psql fails to connect. Errors occurring later are the caller&#39;s problem.</p>
+
+<p>Be sure to &quot;finish&quot; the harness when done with it.</p>
+
+<p>The only extra parameter currently accepted is</p>
+
+<dl>
+
+<dt id="extra_params---single-transaction2">extra_params =&gt; [&#39;--single-transaction&#39;]</dt>
+<dd>
+
+<p>If given, it must be an array reference containing additional parameters to <b>psql</b>.</p>
+
+</dd>
+</dl>
+
+<p>This requires IO::Pty in addition to IPC::Run.</p>
+
+</dd>
+<dt id="node-pgbench-opts-stat-out-err-name-files-args">$node-&gt;pgbench($opts, $stat, $out, $err, $name, $files, @args)</dt>
+<dd>
+
+<p>Invoke <b>pgbench</b>, with parameters and files.</p>
+
+<dl>
+
+<dt id="opts">$opts</dt>
+<dd>
+
+<p>Options as a string to be split on spaces.</p>
+
+</dd>
+<dt id="stat">$stat</dt>
+<dd>
+
+<p>Expected exit status.</p>
+
+</dd>
+<dt id="out">$out</dt>
+<dd>
+
+<p>Reference to a regexp list that must match stdout.</p>
+
+</dd>
+<dt id="err">$err</dt>
+<dd>
+
+<p>Reference to a regexp list that must match stderr.</p>
+
+</dd>
+<dt id="name">$name</dt>
+<dd>
+
+<p>Name of test for error messages.</p>
+
+</dd>
+<dt id="files">$files</dt>
+<dd>
+
+<p>Reference to filename/contents dictionary.</p>
+
+</dd>
+<dt id="args">@args</dt>
+<dd>
+
+<p>Further raw options or arguments.</p>
+
+</dd>
+</dl>
+
+</dd>
+<dt id="node-connect_ok-connstr-test_name-params">$node-&gt;connect_ok($connstr, $test_name, %params)</dt>
+<dd>
+
+<p>Attempt a connection with a custom connection string. This is expected to succeed.</p>
+
+<dl>
+
+<dt id="sql-value">sql =&gt; <b>value</b></dt>
+<dd>
+
+<p>If this parameter is set, this query is used for the connection attempt instead of the default.</p>
+
+</dd>
+<dt id="expected_stdout-value">expected_stdout =&gt; <b>value</b></dt>
+<dd>
+
+<p>If this regular expression is set, matches it with the output generated.</p>
+
+</dd>
+<dt id="log_like-qr-required-message">log_like =&gt; [ qr/required message/ ]</dt>
+<dd>
+
+<p>If given, it must be an array reference containing a list of regular expressions that must match against the server log, using <code>Test::More::like()</code>.</p>
+
+</dd>
+<dt id="log_unlike-qr-prohibited-message">log_unlike =&gt; [ qr/prohibited message/ ]</dt>
+<dd>
+
+<p>If given, it must be an array reference containing a list of regular expressions that must NOT match against the server log. They will be passed to <code>Test::More::unlike()</code>.</p>
+
+</dd>
+</dl>
+
+</dd>
+<dt id="node-connect_fails-connstr-test_name-params">$node-&gt;connect_fails($connstr, $test_name, %params)</dt>
+<dd>
+
+<p>Attempt a connection with a custom connection string. This is expected to fail.</p>
+
+<dl>
+
+<dt id="expected_stderr-value">expected_stderr =&gt; <b>value</b></dt>
+<dd>
+
+<p>If this regular expression is set, matches it with the output generated.</p>
+
+</dd>
+<dt id="log_like-qr-required-message1">log_like =&gt; [ qr/required message/ ]</dt>
+<dd>
+
+</dd>
+<dt id="log_unlike-qr-prohibited-message1">log_unlike =&gt; [ qr/prohibited message/ ]</dt>
+<dd>
+
+<p>See <code>connect_ok(...)</code>, above.</p>
+
+</dd>
+</dl>
+
+</dd>
+<dt id="node-poll_query_until-dbname-query-expected">$node-&gt;poll_query_until($dbname, $query [, $expected ])</dt>
+<dd>
+
+<p>Run <b>$query</b> repeatedly, until it returns the <b>$expected</b> result (&#39;t&#39;, or SQL boolean true, by default). Continues polling if <b>psql</b> returns an error result. Times out after 180 seconds. Returns 1 if successful, 0 if timed out.</p>
+
+</dd>
+<dt id="node-command_ok">$node-&gt;command_ok(...)</dt>
+<dd>
+
+<p>Runs a shell command like PostgreSQL::Test::Utils::command_ok, but with PGHOST and PGPORT set so that the command will default to connecting to this PostgreSQL::Test::Cluster.</p>
+
+</dd>
+<dt id="node-command_fails">$node-&gt;command_fails(...)</dt>
+<dd>
+
+<p>PostgreSQL::Test::Utils::command_fails with our connection parameters. See command_ok(...)</p>
+
+</dd>
+<dt id="node-command_like">$node-&gt;command_like(...)</dt>
+<dd>
+
+<p>PostgreSQL::Test::Utils::command_like with our connection parameters. See command_ok(...)</p>
+
+</dd>
+<dt id="node-command_fails_like">$node-&gt;command_fails_like(...)</dt>
+<dd>
+
+<p>PostgreSQL::Test::Utils::command_fails_like with our connection parameters. See command_ok(...)</p>
+
+</dd>
+<dt id="node-command_checks_all">$node-&gt;command_checks_all(...)</dt>
+<dd>
+
+<p>PostgreSQL::Test::Utils::command_checks_all with our connection parameters. See command_ok(...)</p>
+
+</dd>
+<dt id="node-issues_sql_like-cmd-expected_sql-test_name">$node-&gt;issues_sql_like(cmd, expected_sql, test_name)</dt>
+<dd>
+
+<p>Run a command on the node, then verify that $expected_sql appears in the server log file.</p>
+
+</dd>
+<dt id="node-run_log">$node-&gt;run_log(...)</dt>
+<dd>
+
+<p>Runs a shell command like PostgreSQL::Test::Utils::run_log, but with connection parameters set so that the command will default to connecting to this PostgreSQL::Test::Cluster.</p>
+
+</dd>
+<dt id="node-lsn-mode">$node-&gt;lsn(mode)</dt>
+<dd>
+
+<p>Look up WAL locations on the server:</p>
+
+<pre><code> * insert location (primary only, error on replica)
+ * write location (primary only, error on replica)
+ * flush location (primary only, error on replica)
+ * receive location (always undef on primary)
+ * replay location (always undef on primary)</code></pre>
+
+<p>mode must be specified.</p>
+
+</dd>
+<dt id="node-wait_for_catchup-standby_name-mode-target_lsn">$node-&gt;wait_for_catchup(standby_name, mode, target_lsn)</dt>
+<dd>
+
+<p>Wait for the node with application_name standby_name (usually from node-&gt;name, also works for logical subscriptions) until its replication location in pg_stat_replication equals or passes the upstream&#39;s WAL insert point at the time this function is called. By default the replay_lsn is waited for, but &#39;mode&#39; may be specified to wait for any of sent|write|flush|replay. The connection catching up must be in a streaming state.</p>
+
+<p>If there is no active replication connection from this peer, waits until poll_query_until timeout.</p>
+
+<p>Requires that the &#39;postgres&#39; db exists and is accessible.</p>
+
+<p>target_lsn may be any arbitrary lsn, but is typically $primary_node-&gt;lsn(&#39;insert&#39;). If omitted, pg_current_wal_lsn() is used.</p>
+
+<p>This is not a test. It die()s on failure.</p>
+
+</dd>
+<dt id="node-wait_for_slot_catchup-slot_name-mode-target_lsn">$node-&gt;wait_for_slot_catchup(slot_name, mode, target_lsn)</dt>
+<dd>
+
+<p>Wait for the named replication slot to equal or pass the supplied target_lsn. The location used is the restart_lsn unless mode is given, in which case it may be &#39;restart&#39; or &#39;confirmed_flush&#39;.</p>
+
+<p>Requires that the &#39;postgres&#39; db exists and is accessible.</p>
+
+<p>This is not a test. It die()s on failure.</p>
+
+<p>If the slot is not active, will time out after poll_query_until&#39;s timeout.</p>
+
+<p>target_lsn may be any arbitrary lsn, but is typically $primary_node-&gt;lsn(&#39;insert&#39;).</p>
+
+<p>Note that for logical slots, restart_lsn is held down by the oldest in-progress tx.</p>
+
+</dd>
+<dt id="node-query_hash-dbname-query-columns">$node-&gt;query_hash($dbname, $query, @columns)</dt>
+<dd>
+
+<p>Execute $query on $dbname, replacing any appearance of the string __COLUMNS__ within the query with a comma-separated list of @columns.</p>
+
+<p>If __COLUMNS__ does not appear in the query, its result columns must EXACTLY match the order and number (but not necessarily alias) of supplied @columns.</p>
+
+<p>The query must return zero or one rows.</p>
+
+<p>Return a hash-ref representation of the results of the query, with any empty or null results as defined keys with an empty-string value. There is no way to differentiate between null and empty-string result fields.</p>
+
+<p>If the query returns zero rows, return a hash with all columns empty. There is no way to differentiate between zero rows returned and a row with only null columns.</p>
+
+</dd>
+<dt id="node-slot-slot_name">$node-&gt;slot(slot_name)</dt>
+<dd>
+
+<p>Return hash-ref of replication slot data for the named slot, or a hash-ref with all values &#39;&#39; if not found. Does not differentiate between null and empty string for fields, no field is ever undef.</p>
+
+<p>The restart_lsn and confirmed_flush_lsn fields are returned verbatim, and also as a 2-list of [highword, lowword] integer. Since we rely on Perl 5.8.8 we can&#39;t &quot;use bigint&quot;, it&#39;s from 5.20, and we can&#39;t assume we have Math::Bigint from CPAN either.</p>
+
+</dd>
+<dt id="node-pg_recvlogical_upto-self-dbname-slot_name-endpos-timeout_secs">$node-&gt;pg_recvlogical_upto(self, dbname, slot_name, endpos, timeout_secs, ...)</dt>
+<dd>
+
+<p>Invoke pg_recvlogical to read from slot_name on dbname until LSN endpos, which corresponds to pg_recvlogical --endpos. Gives up after timeout (if nonzero).</p>
+
+<p>Disallows pg_recvlogical from internally retrying on error by passing --no-loop.</p>
+
+<p>Plugin options are passed as additional keyword arguments.</p>
+
+<p>If called in scalar context, returns stdout, and die()s on timeout or nonzero return.</p>
+
+<p>If called in array context, returns a tuple of (retval, stdout, stderr, timeout). timeout is the IPC::Run::Timeout object whose is_expired method can be tested to check for timeout. retval is undef on timeout.</p>
+
+</dd>
+</dl>
+
+
+</body>
+
+</html>
+
+
